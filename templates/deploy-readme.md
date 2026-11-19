@@ -1,30 +1,47 @@
-# <方案名> 部署
+# <recipe name>
 
-> 快照：YYYY-MM-DD HH:MM，<运行中/已下线>；采集方式：只读。
+## Scope
 
-## 1. 拓扑
+- Engine/source: `<engine-or-source>`
+- Supported roles: `<router/prefill/decode/combined>`
+- Runtime identity: `<image-digest-or-revision>`
+- Model identity: `<model-revision>`
+- Status: `<exploratory/candidate/recommended/deprecated>`
 
-| 角色 | 节点 | IP | 容器 | GPU | HTTP / bootstrap |
-|---|---|---|---|---|---|
+## Resource plan
 
-## 2. 参数
-
-| 项 | P | D | 说明 |
+| Role | GPU allocation | Ports | Container/process prefix |
 |---|---|---|---|
+| `<role>` | `<gpu-set>` | `<port-set>` | `<prefix>` |
 
-## 3. 与上一版差异
-
-| 维度 | 上一版 | 本版 |
-|---|---|---|
-
-## 4. 起停
+## Entry points
 
 ```bash
-bash scripts/up.sh        # P → 等健康 → D → 等健康 → router
-bash scripts/status.sh    # 只读
-bash scripts/down.sh --yes
+bash status.sh
+bash start.sh --dry-run
+bash start.sh --apply
+bash stop.sh --dry-run
 ```
 
-## 5. 注意
+## Required configuration
 
-- <模型路径差异 / 端口冲突 / 缓存冷热 / 重启策略缺失 等>
+List required env/config values. Use placeholders such as `<model-root>` and `<private-registry>/<image>@<digest>`; do not provide executable environment-specific defaults.
+
+## Preflight and acceptance
+
+- [ ] Image/build and model assets verified
+- [ ] GPU and port ownership verified
+- [ ] Final argv reviewed
+- [ ] Health and registration passed
+- [ ] Real generation passed
+- [ ] Role data path passed where applicable
+- [ ] Correctness gate passed
+- [ ] Anchor benchmark recorded
+
+## Patch/build provenance
+
+Link to the minimal patch README, applicable revision, build identity and rollback instructions. Write `none` when no patch is required.
+
+## Known limits
+
+State untested modes, required exceptions and operational risks.

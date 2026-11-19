@@ -1,34 +1,67 @@
 #!/usr/bin/env python3
-"""从 results/*/{analysis.json|raw.summary.json} 批量抽取指标为 CSV。
-用法: extract-metrics.py <ROOT> <TAG> [--label-substr SUB] [--gpus N] [--nodes N]
-输出列: tag,label,length_k,out_k,conc,rate,gpus,nodes,n_ok,n_fail,
-        ttft_p50/p90/p99, tpot_p50/p90/p99(ms->s), e2e_p50/p90/p99,
-        out_tok_s,prompt_tok_s,total_tok_s,cached_tok_s,completed_req_s,hit,accept
-"""
-import argparse, glob, json, os, csv, sys
-ap=argparse.ArgumentParser()
-ap.add_argument('root'); ap.add_argument('tag')
-ap.add_argument('--label-substr', default='')
-ap.add_argument('--gpus', type=int, default=32); ap.add_argument('--nodes', type=int, default=4)
-a=ap.parse_args()
-rows=[]
-for f in sorted(glob.glob(os.path.join(a.root,'**','analysis.json'), recursive=True)
-              + glob.glob(os.path.join(a.root,'**','raw.summary.json'), recursive=True)):
-    d=os.path.dirname(f)
-    if a.label_substr and a.label_substr not in d: continue
-    try: p=json.load(open(f))
-    except Exception: continue
-    lat=(p.get('latency') or {}).get('steady') or (p.get('latency') or {}).get('all') or {}
-    st=p.get('steady') or {}; tk=p.get('tokens') or {}; rq=p.get('requests') or {}; run=p.get('run') or {}
-    t=lat.get('ttft_s') or {}; tp=lat.get('tpot_ms') or {}; e=lat.get('e2e_s') or {}
-    ms=lambda d,k: (d.get(k)/1000.0 if isinstance(d.get(k),(int,float)) else '')
-    rows.append(dict(tag=a.tag,label=run.get('label') or os.path.basename(d),rate=run.get('rate'),
-      conc=run.get('concurrency'),gpus=a.gpus,nodes=a.nodes,n_ok=rq.get('ok'),n_fail=rq.get('failed'),
-      ttft_p50=t.get('p50'),ttft_p90=t.get('p90'),ttft_p99=t.get('p99'),
-      tpot_p50=ms(tp,'p50'),tpot_p90=ms(tp,'p90'),tpot_p99=ms(tp,'p99'),
-      e2e_p50=e.get('p50'),e2e_p90=e.get('p90'),e2e_p99=e.get('p99'),
-      out_tok_s=st.get('output_tok_s'),prompt_tok_s=st.get('prompt_tok_s'),total_tok_s=st.get('total_tok_s'),
-      cached_tok_s=st.get('cached_tok_s'),completed_req_s=st.get('completed_req_s'),
-      hit=tk.get('cached_fraction'),accept=((p.get('server_metrics') or {}).get('headline') or {}).get('spec_accept_length')))
-if not rows: sys.exit('no analysis.json/raw.summary.json found')
-w=csv.DictWriter(sys.stdout, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
+"""Extract a compact, auditable CSV from benchmark analysis JSON files."""
+
+import argparse
+import csv
+import json
+from pathlib import Path
+import sys
+
+
+def percentile(metric, name):
+    value = metric.get(name)
+    return value if isinstance(value, (int, float)) else ""
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("root", type=Path)
+parser.add_argument("tag")
+parser.add_argument("--label-substr", default="")
+parser.add_argument("--gpus", type=int)
+args = parser.parse_args()
+
+files = sorted(set(args.root.rglob("analysis.json")) | set(args.root.rglob("raw.summary.json")))
+rows = []
+for path in files:
+    if args.label_substr and args.label_substr not in str(path.parent):
+        continue
+    try:
+        with path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"skip {path}: {error}", file=sys.stderr)
+        continue
+
+    latency = payload.get("latency") or {}
+    latency = latency.get("steady") or latency.get("all") or {}
+    steady = payload.get("steady") or {}
+    requests = payload.get("requests") or {}
+    run = payload.get("run") or {}
+    ttft = latency.get("ttft_s") or {}
+    tpot = latency.get("tpot_ms") or {}
+
+    rows.append({
+        "run_id": run.get("run_id") or path.parent.name,
+        "tag": args.tag,
+        "label": run.get("label") or "",
+        "rate": run.get("rate") or "",
+        "concurrency": run.get("concurrency") or "",
+        "duration_s": steady.get("duration_s") or "",
+        "requests_ok": requests.get("ok") or "",
+        "requests_failed": requests.get("failed") or "",
+        "ttft_p50_ms": percentile(ttft, "p50") * 1000 if percentile(ttft, "p50") != "" else "",
+        "ttft_p99_ms": percentile(ttft, "p99") * 1000 if percentile(ttft, "p99") != "" else "",
+        "tpot_p50_ms": percentile(tpot, "p50"),
+        "tpot_p90_ms": percentile(tpot, "p90"),
+        "input_tok_s": steady.get("prompt_tok_s") or "",
+        "output_tok_s": steady.get("output_tok_s") or "",
+        "gpu_count": args.gpus if args.gpus is not None else "",
+        "source_path": str(path.relative_to(args.root)),
+    })
+
+if not rows:
+    parser.error("no readable analysis.json or raw.summary.json found")
+
+writer = csv.DictWriter(sys.stdout, fieldnames=list(rows[0]))
+writer.writeheader()
+writer.writerows(rows)

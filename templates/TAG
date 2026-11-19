@@ -1,0 +1,7 @@
+# Experiment tag template
+
+TAG=<mode>-<workload>-<variant>
+CONFIG_ID=<runtime>-<topology>-<short-config-hash>
+
+# Do not include usernames, hostnames, private model names, customer names, or IPs.
+# Each execution gets a separate UTC run-id under results/<tag>/<run-id>/.

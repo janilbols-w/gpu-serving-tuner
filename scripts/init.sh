@@ -1,61 +1,66 @@
 #!/usr/bin/env bash
-# 首次初始化：收集本集群的元信息，写入 <project>/.gpu-tuner/meta.env
-# 用法：
-#   交互：bash scripts/init.sh [project_root]
-#   无人值守：GT_WORKSPACE=... GT_IMAGE=... ... bash scripts/init.sh --yes [project_root]
-#   查看  ：bash scripts/init.sh --show
-#   重写  ：bash scripts/init.sh --force
+# Create a project-local .gpu-tuner/meta.env with shell-safe values.
+# Usage: init.sh [--yes|--force|--show] [project_root]
 set -euo pipefail
-MODE=interactive; PROJECT=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --yes) MODE=batch ;;
-    --force) MODE=force ;;
-    --show) MODE=show ;;
-    -*) echo "unknown flag: $1" >&2; exit 2 ;;
-    *) PROJECT=$1 ;;
-  esac; shift
-done
-PROJECT=${PROJECT:-$PWD}
-META_DIR="$PROJECT/.gpu-tuner"; META="$META_DIR/meta.env"
 
-if [ "$MODE" = show ]; then
-  [ -f "$META" ] && cat "$META" || { echo "no meta at $META" >&2; exit 1; }
+mode=interactive
+force=0
+project=""
+while (($#)); do
+  case "$1" in
+    --yes) mode=batch ;;
+    --force) force=1 ;;
+    --show) mode=show ;;
+    -*) printf 'unknown flag: %s\n' "$1" >&2; exit 2 ;;
+    *) project=$1 ;;
+  esac
+  shift
+done
+
+project=${project:-$PWD}
+meta_dir="$project/.gpu-tuner"
+meta="$meta_dir/meta.env"
+
+if [[ $mode == show ]]; then
+  [[ -f $meta ]] || { printf 'no metadata: %s\n' "$meta" >&2; exit 1; }
+  sed -E 's/^(([^#=]*(TOKEN|SECRET|PASSWORD|KEY)[^#=]*)=).*/\1<redacted>/I' "$meta"
   exit 0
 fi
-if [ -f "$META" ] && [ "$MODE" != force ]; then
-  echo "已存在：$META（--force 重写 / --show 查看）"; exit 0
+
+if [[ -f $meta && $force -ne 1 ]]; then
+  printf 'metadata exists: %s (use --force to replace)\n' "$meta" >&2
+  exit 1
 fi
 
-ask() { # name  default  prompt
-  local name=$1 def=${2-} prompt=$3 ans
-  if [ "$MODE" = batch ]; then
-    ans="${!name:-$def}"
+ask_value() {
+  local name=$1 prompt=$2 fallback=${3-} value
+  if [[ $mode == batch ]]; then
+    value=${!name-}
   else
-    read -r -p "$prompt [$def]: " ans || true
-    ans=${ans:-$def}
+    read -r -p "$prompt${fallback:+ [$fallback]}: " value || true
+    value=${value:-$fallback}
   fi
-  printf '%s=%s\n' "$name" "$ans"
+  printf '%s' "$value"
 }
 
-mkdir -p "$META_DIR"
+workspace=$(ask_value GT_WORKSPACE 'workspace containing tools/, datasets/, results/' "$project")
+image=$(ask_value GT_IMAGE 'benchmark image or digest (required by run-point)' '')
+engines=$(ask_value GT_ENGINES 'engine list: name=url separated by spaces' '')
+base_url=$(ask_value GT_BASE_URL 'OpenAI-compatible endpoint' '')
+gpu_count=$(ask_value GT_GPU_COUNT 'participating GPU count' '')
+
+mkdir -p "$meta_dir"
+umask 077
 {
-  echo "# gpu-serving-tuner meta — 首次初始化生成，请勿提交（已在 .gitignore）"
-  echo "# generated: $(date -u +%FT%TZ)"
-  ask GT_WORKSPACE        "$PROJECT"                    "工作区根目录（放 tools/、datasets/、results/）"
-  ask GT_IMAGE            "${GT_IMAGE:-}"               "引擎镜像（原样 tag，如 registry/engine:tag）"
-  ask GT_ENGINES          "${GT_ENGINES:-}"             "flush/metrics 用 engine 列表（name=http://host:port，空格分隔）"
-  ask GT_BASE_URL         "${GT_BASE_URL:-http://127.0.0.1:8000}" "压测入口 URL"
-  ask GT_NODES            "${GT_NODES:-4}"              "节点数"
-  ask GT_GPUS_PER_NODE    "${GT_GPUS_PER_NODE:-8}"      "每节点 GPU 数"
-  ask GT_SLO_TTFT_P50     "${GT_SLO_TTFT_P50:-2.5}"     "SLO：TTFT p50 上限（秒）"
-  ask GT_SLO_TTFT_P99     "${GT_SLO_TTFT_P99:-5}"       "SLO：TTFT p99 上限（秒）"
-  ask GT_SLO_TPOT_P90     "${GT_SLO_TPOT_P90:-20}"      "SLO：TPOT p90 上限（毫秒）"
-  ask GT_PRICE_FRESH      "${GT_PRICE_FRESH:-8}"        "目录价：新输入（元/百万 token）"
-  ask GT_PRICE_CACHED     "${GT_PRICE_CACHED:-2}"       "目录价：缓存命中输入（元/百万 token）"
-  ask GT_PRICE_OUTPUT     "${GT_PRICE_OUTPUT:-28}"      "目录价：输出（元/百万 token）"
-  ask GT_TARGET_MONTH     "${GT_TARGET_MONTH:-24000000}" "目标收入（元 / 32 卡月）"
-} > "$META"
-chmod 600 "$META"
-echo "written: $META"
-echo "next: bash scripts/run-point.sh <TAG> <DATASET_BASE> <RATE> <DURATION>"
+  printf '# gpu-serving-tuner metadata; local only; do not commit\n'
+  printf '# generated_at=%s\n' "$(date -u +%FT%TZ)"
+  printf 'GT_WORKSPACE=%q\n' "$workspace"
+  printf 'GT_IMAGE=%q\n' "$image"
+  printf 'GT_ENGINES=%q\n' "$engines"
+  printf 'GT_BASE_URL=%q\n' "$base_url"
+  printf 'GT_GPU_COUNT=%q\n' "$gpu_count"
+} >"$meta"
+chmod 600 "$meta"
+
+printf 'written: %s\n' "$meta"
+printf 'review values before running a benchmark; empty values have no defaults\n'

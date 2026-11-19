@@ -1,49 +1,13 @@
-# 台账：<项目/服务名>
+# History
 
-- 窗口：YYYY-MM-DD HH:MM → HH:MM（时区）
-- 执行者：
-- 现场状态：<服务是否在跑、是否在压测>
-- 硬约束：<只读 / 零负载 / 不重启 / 不 commit 镜像 …>
-- 目录变更：<旧路径 → 新路径；没有就写"无">
+Append only. Add a correction entry instead of rewriting an earlier record.
 
-## 1. 请求与结论
+| Time (UTC) | Action | Config/run | Status | Evidence | Decision/next step |
+|---|---|---|---|---|---|
+| `<timestamp>` | `<baseline/experiment/review>` | `<config-id or run-id>` | `<valid/invalid/failed>` | `<relative-link>` | `<keep/drop/pending>` |
 
-| # | 请求 | 结论 |
-|---|---|---|
-| R1 |  |  |
+## Conventions
 
-## 2. 时间线
-
-> 一行一个动作；结果必须带**文件路径或数字**。
-
-| 时间 | 动作 | 关键结果 |
-|---|---|---|
-|  |  |  |
-
-## 3. 信息记录
-
-### 3.1 事实（命令输出）
-
-### 3.2 推断（非直接观测，需标注依据）
-
-## 4. 交付物（当前快照）
-
-```
-<路径>   <一句话>
-```
-
-## 5. 校验记录
-
-| 校验 | 结果 |
-|---|---|
-|  |  |
-
-## 6. 约束遵守
-
-| 约束 | 做法（含"刻意没做"的事） |
-|---|---|
-|  |  |
-
-## 7. 遗留问题
-
-1. <可执行项：谁决定 / 需要什么数据>
+- Every benchmark action links to an immutable run-id.
+- Every decision links to an iteration page or report section.
+- Do not place credentials, private hosts, internal paths or unpublished numbers in this file.

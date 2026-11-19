@@ -1,50 +1,54 @@
-# 测试方法（可直接复用）
+# 分层测试配方
 
-## 0. 一次测量的固定流水线
+## 固定流水线
 
-```
-flush 全部 engine → warmup 共享前缀 → 压测 → analyze(steady) → 落盘 cmd/client.log/raw/analyze
-```
-
-任何一步缺失，点与点之间就不可比。
-
-## 1. 单点压测（最常用）
-
-```bash
-bash scripts/run-point.sh <TAG> <DATASET_BASE> <RATE> <DURATION_S>
-# 例：run-point.sh L77k90-r44 env-77k-h90-o600-n8192 44 600
+```text
+preflight → flush or declared exception → warmup → load → analyze → validity gate → archive
 ```
 
-- 开环用 `--rate`（泊松），闭路用 `--concurrency`；**两种不能混比**
-- `--duration`：粗扫 150–180 s；**写结论必须 600 s**
-- `--seed`：默认取 rate；边缘点换 145/245 复测
-- warmup 行数 16、`--flush-url` 覆盖全部 engine
+脚本不得在缺少 flush 或 warmup 工具时静默继续。若系统不支持对应阶段，使用显式开关并把例外原因写入 metadata。
 
-## 2. 48 点矩阵（evalscope）
+## 测试层级
 
-- 维度：8k/64k/128k/256k × 0%/90% 命中 × c1/c8/c32/c64/c128/c256
-- 每点 200–500 s；跑完用 `analysis.json` 抽指标（p50/p90/p99 + 每卡吞吐）
-- **exact 前缀长度**要按设计校准（prefix_length/pages），否则"90% 命中"是假的
+### 1. 静态与 dry-run
 
-## 3. AgentX（真实轨迹）
+检查 shell/Python 语法、最终 argv、镜像/模型/端口/GPU 计划、结果目录和停止目标。此阶段不启动服务。
 
-- 官方 1 小时预设；固定接受长度 3.61（榜单口径）
-- 会话粘性路由；每点错误数、TTFT/TPOT、缓存命中要一起记
-- 报告口径与生产口径不同：AgentX 是"同交互性比吞吐"
+### 2. Smoke
 
-## 4. 精度门禁
+最小负载确认健康接口、真实生成、输出格式和基本正确性。P/D 系统需要额外确认真实角色数据路径，不以注册成功代替。
 
-- GSM8K 1,319 题（lm-eval 固定 commit）+ needle 40 题（专压 DSA top-k）
-- 理解检验力：±0.8pp，小于此的差异不构成结论；需要更严就用配对/扩样本
+### 3. Correctness gate
 
-## 5. 复测与续跑
+根据变更风险选择固定小集合、任务评测、长上下文检索、确定性 token 对比或数值误差检查。量化、缓存、通信和投机变更必须重新通过正确性门禁。
 
-- 矩阵类任务支持断点续跑：看 `matrix.status.json`（done/total/failed/current）
-- 复测沿用同一 `tag` + 新时间戳目录；导出表时用 tag 区分批次
-- 失败点记录原因（如 `failed requests 5/258`），不要静默丢弃
+### 4. Anchor
 
-## 6. 环境纪律
+固定一个代表性负载点，在每天、每台机器、每个镜像或每次重大变更开始时运行。anchor 漂移超过当前噪声预算时暂停比较。
 
-- JIT 缓存冷热必须一致（`cache/` 目录）
-- 压测期间不要在同一节点跑其它 GPU 任务
-- 记录 GPU 温度/功耗、邻接容器；跨天对比前先确认这些没变
+### 5. Short sweep
+
+沿一个变量逐档测试，寻找明显劣化点和 knee。短测结果只用于筛选。
+
+### 6. Boundary confirmation
+
+对候选点及其上下相邻档位重复测试；检查 SLO、keep-up、错误率和结果重叠程度。
+
+### 7. Long steady-state
+
+验证热状态、长尾、内存增长、缓存变化、重试和角色失衡。持续时间由系统周期和风险决定，不固化成通用分钟数。
+
+### 8. Expanded matrix
+
+只对晋级候选扩展输入/输出长度、命中率、并发/速率、采样或多轮场景。矩阵维度与生产工作负载假设对应。
+
+## 重跑策略
+
+- 配置或代码变化：重跑 correctness + anchor。
+- 环境、镜像、机器或日期变化：重跑 anchor。
+- 边界点：重复 seed 或运行顺序交错，降低系统漂移偏差。
+- 可疑异常：先完整保存失败现场，再决定是否重跑；不覆盖原 run-id。
+
+## 结果目录
+
+每次运行写入 `results/<tag>/<run-id>/`，至少包含 metadata、实际命令、stdout/stderr、原始结果、分析结果和状态。run-id 应唯一且不可变。

@@ -1,28 +1,38 @@
-# 迭代 NNN：<一句话假设>
+# Iteration <NNN>: <sanitized title>
 
-- 日期：YYYY-MM-DD
-- 代码/镜像：<commit 或 image id>
-- 对照基线：`results/<baseline-tag>/`
+- Date/time: `<timestamp-with-timezone>`
+- Owner: `<role-or-redacted-id>`
+- Baseline config/run: `<config-id>` / `<run-id>`
+- Candidate config/run: `<config-id>` / `<run-id>`
+- Decision: `<keep/drop/pending>`
 
-## 1. 目的与假设
+## Hypothesis
 
-<要验证什么；预期变化方向与量级>
+What bottleneck should this change affect, and why?
 
-## 2. 变量
+## Change
 
-| 类型 | 项 | 旧 | 新 |
-|---|---|---|---|
-| 单变量 / 栈式 |  |  |  |
+- Variable or explicit bundle: `<name>`
+- Baseline value: `<value>`
+- Candidate value: `<value>`
+- Fixed conditions: `<runtime, hardware, workload, SLO>`
 
-## 3. 结果（同口径）
+## Test level and gates
 
-| 负载 | 到达率/并发 | TTFT p50/p90/p99 | TPOT p50/p90/p99 | 每卡吞吐 | 错误 | SLO |
-|---|---|---|---|---|---|---|
+- Level: `<smoke/anchor/short/boundary/long/matrix>`
+- Correctness: `<pass/fail/not-run + reason>`
+- Keep-up: `<pass/fail>`
+- SLO: `<pass/fail>`
+- Exceptions: `<none or documented reason>`
 
-## 4. 结论
+## Evidence
 
-- **保留 / 放弃 / 待定**：
-- 证据：`results/<tag>/analysis.json`
-- 备注：<是否受噪声影响、是否需 10 分钟确认>
+Link to raw run directories and a compact result table. Do not paste sensitive raw logs.
 
-## 5. 风险与下一步
+## Interpretation
+
+Separate observed facts from the explanation. State uncertainty and possible confounders.
+
+## Decision and next step
+
+Why keep, drop or defer the change? What exact test would resolve a pending decision?
